@@ -7,9 +7,7 @@
     <title>RoyaleAPI Data Extractor</title>
     <link rel="icon" type="png" href="eye_icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
-        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
             --void: #0a0c09;
@@ -19,16 +17,13 @@
             --ink: #e8e6da;
             --ink-dim: #9aa08c;
             --alert: #d6484f;
-            --alert-dim: #7a2a2e;
             --ok: #7fae6f;
             --amber: #d9a13c;
             --mono: 'IBM Plex Mono', monospace;
             --display: 'Oswald', sans-serif;
         }
 
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
         body {
             margin: 0;
@@ -40,7 +35,6 @@
             overflow-x: hidden;
         }
 
-        /* subtle CRT scanline atmosphere */
         body::before {
             content: "";
             position: fixed;
@@ -69,19 +63,14 @@
             text-shadow: 0 0 18px rgba(217, 161, 60, 0.35);
         }
 
-        h1 b {
-            font-weight: 600;
-        }
-
         .sub-caption {
             text-align: center;
             color: var(--ink-dim);
             font-size: 12px;
             letter-spacing: 4px;
             text-transform: uppercase;
-            padding: 10px 0 0;
+            padding: 10px 0 14px;
             border-bottom: 1px solid var(--line);
-            padding-bottom: 14px;
         }
 
         .button-wrapper {
@@ -106,16 +95,12 @@
             border-radius: 4px;
             cursor: pointer;
             box-shadow: 0 0 0 1px rgba(214, 72, 79, 0.35), 0 10px 25px -8px rgba(214, 72, 79, 0.6);
-            transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.2s ease;
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
         }
 
         .button_class:hover {
             transform: translateY(-2px);
             box-shadow: 0 0 0 1px rgba(214, 72, 79, 0.5), 0 16px 30px -8px rgba(214, 72, 79, 0.75);
-        }
-
-        .button_class:active {
-            transform: translateY(0);
         }
 
         hr {
@@ -134,64 +119,24 @@
             color: var(--ink-dim);
         }
 
-        .status-bar.ok {
-            color: var(--ok);
-        }
-
-        .status-bar.warn {
-            color: var(--amber);
-        }
-
-        .status-bar.loading {
-            color: var(--ink-dim);
-        }
-
-        .status-bar.loading::after {
-            content: "";
-            display: inline-block;
-            width: 6px;
-            height: 6px;
-            margin-left: 8px;
-            border-radius: 50%;
-            background: var(--ink-dim);
-            animation: pulse 1s infinite ease-in-out;
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 0.2;
-            }
-
-            50% {
-                opacity: 1;
-            }
-        }
+        .status-bar.ok { color: var(--ok); }
+        .status-bar.warn { color: var(--amber); }
 
         .dossier {
-            max-width: 720px;
-            margin: 0 auto 60px;
+            max-width: 760px;
+            margin: 0 auto 40px;
             padding: 0 20px;
             display: flex;
             flex-direction: column;
             gap: 16px;
         }
 
-        .dossier-empty {
-            text-align: center;
-            color: var(--ink-dim);
-            font-size: 14px;
-            padding: 30px 0;
-            letter-spacing: 1px;
-        }
-
         .dossier-heading {
-            max-width: 720px;
-            margin: 0 auto 18px;
+            max-width: 760px;
+            margin: 20px auto 14px;
             padding: 0 20px;
-            color: var(--ink-dim);
-            font-size: 13px;
+            color: var(--amber);
+            font-size: 14px;
             letter-spacing: 2px;
             text-transform: uppercase;
             display: flex;
@@ -207,17 +152,19 @@
             background: var(--line);
         }
 
-        /* --- person card / case file entry --- */
         .person {
             position: relative;
             background: var(--panel);
             color: var(--ink);
             border: 1px solid var(--line);
-            border-left: 3px solid var(--alert);
+            border-left: 4px solid var(--alert);
             padding: 0;
             overflow: hidden;
             border-radius: 3px;
-            box-shadow: 0 6px 18px -12px rgba(0, 0, 0, 0.7);
+        }
+
+        .person.has-dueled {
+            border-left-color: var(--ok);
         }
 
         .person-header {
@@ -230,48 +177,43 @@
             user-select: none;
         }
 
-        .person-id {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
         .person-name {
             font-family: var(--display);
             font-size: 19px;
             letter-spacing: 1px;
             text-transform: uppercase;
-            color: var(--ink);
         }
 
         .person-meta {
-            font-size: 11px;
+            font-size: 12px;
             color: var(--ink-dim);
-            letter-spacing: 1px;
+            margin-top: 4px;
         }
 
         .stamp {
             font-family: var(--display);
             font-size: 12px;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
             color: var(--alert);
             border: 2px solid var(--alert);
-            padding: 4px 10px;
+            padding: 4px 8px;
             border-radius: 2px;
-            transform: rotate(-6deg);
             text-transform: uppercase;
             white-space: nowrap;
-            opacity: 0.9;
+        }
+
+        .stamp.ok {
+            color: var(--ok);
+            border-color: var(--ok);
         }
 
         .chevron {
-            width: 10px;
-            height: 10px;
+            width: 8px;
+            height: 8px;
             border-right: 2px solid var(--ink-dim);
             border-bottom: 2px solid var(--ink-dim);
             transform: rotate(45deg);
             transition: transform 0.2s ease;
-            flex-shrink: 0;
         }
 
         .person.open .chevron {
@@ -288,214 +230,227 @@
         }
 
         .person.open .battle_report {
-            max-height: 400px;
+            max-height: 600px;
         }
 
         .battle_report table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 12.5px;
+            font-size: 12px;
         }
 
         .battle_report th {
             text-align: left;
-            padding: 10px 18px 6px;
+            padding: 10px 14px;
             color: var(--ink-dim);
-            font-weight: 500;
+            font-size: 10px;
             letter-spacing: 1px;
             text-transform: uppercase;
-            font-size: 10.5px;
             border-bottom: 1px solid var(--line);
         }
 
         .battle_report td {
-            padding: 8px 18px;
-            border-bottom: 1px solid rgba(51, 57, 42, 0.5);
-        }
-
-        .battle_report tr:last-child td {
-            border-bottom: none;
-        }
-
-        .result-tag {
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 10.5px;
-            letter-spacing: 0.5px;
-        }
-
-        .result-tag.win {
-            background: rgba(127, 174, 111, 0.18);
-            color: var(--ok);
-        }
-
-        .result-tag.loss {
-            background: rgba(214, 72, 79, 0.18);
-            color: var(--alert);
-        }
-
-        .result-tag.missed {
-            background: rgba(154, 160, 140, 0.15);
-            color: var(--ink-dim);
+            padding: 8px 14px;
+            border-bottom: 1px solid rgba(51, 57, 42, 0.4);
         }
 
         footer {
             text-align: center;
-            font-size: 10.5px;
+            font-size: 11px;
             color: var(--ink-dim);
-            letter-spacing: 1px;
             padding: 20px 0 40px;
         }
     </style>
     <script>
-        // ------------------------------------------------------------------
-        // CONFIG
-        // The official Clash Royale API (api.clashroyale.com) requires a
-        // developer key bound to a fixed IP, and does not send CORS headers
-        // for browser requests — so this page cannot call it directly.
-        // apiBase points at the Cloudflare Worker proxy (see worker.js) that
-        // holds the key and forwards /clans/... requests through RoyaleAPI's
-        // static-IP relay. Replace the URL below with your deployed Worker's
-        // address (looks like https://royale-war-proxy.YOUR-SUBDOMAIN.workers.dev).
-        // Until it's set up, this page falls back to labeled demo data so the
-        // layout can still be reviewed.
-        // ------------------------------------------------------------------
         const CONFIG = {
             clanTag: '#8CC822R',
-            apiBase: 'https://royale-war-proxy.clanwarbg.workers.dev/api',
-            warDaysToCheck: 4
+            apiBase: 'https://royale-war-proxy.clanwarbg.workers.dev/api'
         };
 
         async function collectData() {
-            setStatus('Свързване с бойния архив…', 'loading');
-            renderMissing(null);
-
-            let members;
+            setStatus('Зареждане на данни...', 'loading');
             try {
-                members = await fetchWarParticipation(CONFIG.clanTag, CONFIG.warDaysToCheck);
-                setStatus(`Извлечени данни за клан ${CONFIG.clanTag} · последни ${CONFIG.warDaysToCheck} бойни дни.`, 'ok');
+                // 1. Fetch active clan members
+                const tagEncoded = encodeURIComponent(CONFIG.clanTag);
+                const membersRes = await fetch(`${CONFIG.apiBase}/clans/${tagEncoded}/members`);
+                if (!membersRes.ok) throw new Error('Грешка при зареждане на членовете');
+                const membersData = await membersRes.json();
+                const membersList = membersData.items || [];
+
+                // 2. Fetch current river race (active war days context)
+                const raceRes = await fetch(`${CONFIG.apiBase}/clans/${tagEncoded}/currentriverrace`);
+                if (!raceRes.ok) throw new Error('Грешка при зареждане на текущата война');
+                const raceData = await raceRes.json();
+
+                // Process member statistics for the 4 active war days
+                const parsedMembers = processWarData(membersList, raceData);
+                
+                // Sort & Split into 2 categories: 0 Duels first, ≥1 Duels second
+                const noDuel = parsedMembers.filter(m => m.duelBattles === 0);
+                const playedDuel = parsedMembers.filter(m => m.duelBattles > 0);
+
+                renderResults(noDuel, playedDuel);
+                setStatus(`Успешно заредени ${parsedMembers.length} члена.`, 'ok');
             } catch (err) {
-                console.warn('Live fetch failed, showing demo dossier:', err);
-                members = getDemoData();
-                setStatus('Няма връзка с API — показва се демонстрационно досие.', 'warn');
+                console.warn('API connection failed, displaying fallback dataset:', err);
+                const demoData = getDemoData();
+                const noDuel = demoData.filter(m => m.duelBattles === 0);
+                const playedDuel = demoData.filter(m => m.duelBattles > 0);
+                renderResults(noDuel, playedDuel);
+                setStatus('Показват се примерни данни (Няма връзка с API).', 'warn');
             }
-
-            const missing = members.filter(m => !hasParticipated(m, CONFIG.warDaysToCheck));
-            renderMissing(missing);
         }
 
-        function hasParticipated(member, days) {
-            return member.log.slice(0, days).some(entry => entry.participated);
-        }
-
-        async function fetchWarParticipation(clanTag, days) {
-            const tagEncoded = encodeURIComponent(clanTag);
-            const res = await fetch(`${CONFIG.apiBase}/clans/${tagEncoded}/riverracelog?limit=${days}`);
-            if (!res.ok) throw new Error(`API върна статус ${res.status}`);
-            const raceLog = await res.json();
-            return mapRiverRaceLogToMembers(raceLog, days);
-        }
-
-        function mapRiverRaceLogToMembers(raceLog, days) {
-            const memberMap = new Map();
-            const items = (raceLog.items || []).slice(0, days);
-
-            items.forEach((warDay, dayIndex) => {
-                const ourStanding = (warDay.standings || []).find(s => s.clan.tag === CONFIG.clanTag);
-                if (!ourStanding) return;
-
-                (ourStanding.clan.participants || []).forEach(p => {
-                    if (!memberMap.has(p.tag)) {
-                        memberMap.set(p.tag, { name: p.name, tag: p.tag, log: [] });
-                    }
-                    const decksToday = p.decksUsedToday ?? 0;
-                    memberMap.get(p.tag).log.unshift({
-                        day: `Ден ${days - dayIndex}`,
-                        mode: 'Дуел',
-                        participated: decksToday > 0,
-                        result: decksToday > 0 ? 'Изигран' : 'Пропуснат',
-                        fame: p.fame ?? 0
-                    });
-                });
+        function processWarData(clanMembers, raceData) {
+            const standings = raceData.clan || {};
+            const participants = standings.participants || [];
+            
+            // Map war stats by player tag
+            const participantMap = new Map();
+            participants.forEach(p => {
+                participantMap.set(p.tag, p);
             });
 
-            return Array.from(memberMap.values());
-        }
+            return clanMembers.map(member => {
+                const warStats = participantMap.get(member.tag);
+                
+                let totalBattles = 0;
+                let duelBattles = 0;
+                let rageBattles = 0;
+                let normalBattles = 0;
+                let totalFame = warStats ? warStats.fame : 0;
 
-        function getDemoData() {
-            return [
-                {
-                    name: 'ShadowBrew', tag: '#DEMO01', log: [
-                        { day: 'Ден 4', mode: 'Дуел', participated: false, result: 'Пропуснат', fame: 0 },
-                        { day: 'Ден 3', mode: 'Дуел', participated: false, result: 'Пропуснат', fame: 0 },
-                        { day: 'Ден 2', mode: 'Лодка', participated: true, result: 'Загуба', fame: 180 },
-                        { day: 'Ден 1', mode: 'Дуел', participated: false, result: 'Пропуснат', fame: 0 }
-                    ]
-                },
-                {
-                    name: 'NightHex', tag: '#DEMO02', log: [
-                        { day: 'Ден 4', mode: 'Дуел', participated: false, result: 'Пропуснат', fame: 0 },
-                        { day: 'Ден 3', mode: 'Дуел', participated: false, result: 'Пропуснат', fame: 0 },
-                        { day: 'Ден 2', mode: 'Дуел', participated: false, result: 'Пропуснат', fame: 0 },
-                        { day: 'Ден 1', mode: 'Дуел', participated: false, result: 'Пропуснат', fame: 0 }
-                    ]
-                },
-                {
-                    name: 'Quietbolt', tag: '#DEMO03', log: [
-                        { day: 'Ден 4', mode: 'Дуел', participated: true, result: 'Победа', fame: 210 },
-                        { day: 'Ден 3', mode: 'Дуел', participated: false, result: 'Пропуснат', fame: 0 },
-                        { day: 'Ден 2', mode: 'Дуел', participated: false, result: 'Пропуснат', fame: 0 },
-                        { day: 'Ден 1', mode: 'Лодка', participated: true, result: 'Победа', fame: 180 }
-                    ]
+                // Extract active 4 war days details (excluding 3 training days)
+                let dayLogs = [];
+                
+                if (warStats && warStats.periodLogs) {
+                    // Filter out training days (periods 0, 1, 2) and target active war days (3, 4, 5, 6)
+                    const activeWarDays = warStats.periodLogs.filter(log => log.periodIndex >= 3);
+                    
+                    activeWarDays.forEach((dayLog, index) => {
+                        const dayNum = index + 1;
+                        const battles = dayLog.items || [];
+                        const dayFame = dayLog.fame || 0;
+                        
+                        let dayModes = [];
+                        battles.forEach(b => {
+                            totalBattles++;
+                            if (b.type === 'duel' || b.type === 'colosseum') duelBattles++;
+                            else if (b.type === 'rage') rageBattles++;
+                            else normalBattles++;
+
+                            dayModes.push(formatBattleType(b.type));
+                        });
+
+                        dayLogs.push({
+                            day: `Ден ${dayNum}`,
+                            battlesCount: battles.length,
+                            modes: dayModes.length > 0 ? dayModes.join(', ') : 'Няма изиграни битки',
+                            fame: dayFame
+                        });
+                    });
+                } else {
+                    // Fallback log structure when detailed logs are pending
+                    totalBattles = warStats ? warStats.decksUsed : 0;
+                    for (let d = 1; d <= 4; d++) {
+                        dayLogs.push({
+                            day: `Ден ${d}`,
+                            battlesCount: d === 4 ? totalBattles : 0,
+                            modes: totalBattles > 0 ? 'Стандартни/Дуел битки' : 'Няма битки',
+                            fame: d === 4 ? totalFame : 0
+                        });
+                    }
                 }
-            ];
+
+                return {
+                    name: member.name,
+                    tag: member.tag,
+                    totalBattles: Math.min(totalBattles, 16),
+                    duelBattles,
+                    rageBattles,
+                    normalBattles,
+                    totalFame,
+                    dayLogs
+                };
+            });
         }
 
-        function setStatus(text, type) {
-            const el = document.getElementById('status');
-            el.textContent = text;
-            el.className = 'status-bar ' + (type || '');
+        function formatBattleType(type) {
+            switch (type) {
+                case 'duel': case 'colosseum': return 'Дуел';
+                case 'rage': return 'Rage битка';
+                case 'riverPvp': return 'Нормална битка';
+                case 'boatBattle': return 'Атака на лодка';
+                default: return 'Битка';
+            }
         }
 
-        function renderMissing(missing) {
+        function renderResults(noDuelList, duelList) {
             const container = document.getElementById('results');
             container.innerHTML = '';
 
-            if (missing === null) return; // loading state, nothing to draw yet
+            // Section 1: Members with NO Duels (Top)
+            appendSection(container, 'Без изигран дуел (Последни 4 дни)', noDuelList, false);
 
-            if (missing.length === 0) {
-                container.innerHTML = '<div class="dossier-empty">Всички членове са участвали в поне един дуел през последните ' + CONFIG.warDaysToCheck + ' бойни дни.</div>';
+            // Section 2: Members with Duels (Bottom)
+            appendSection(container, 'С поне 1 изигран дуел', duelList, true);
+        }
+
+        function appendSection(container, title, list, hasDueled) {
+            const heading = document.createElement('div');
+            heading.className = 'dossier-heading';
+            heading.textContent = `${title} (${list.length})`;
+            container.appendChild(heading);
+
+            if (list.length === 0) {
+                const empty = document.createElement('div');
+                empty.style.textAlign = 'center';
+                empty.style.color = 'var(--ink-dim)';
+                empty.style.fontSize = '12px';
+                empty.style.marginBottom = '20px';
+                empty.textContent = 'Няма намерени членове в тази категория.';
+                container.appendChild(empty);
                 return;
             }
 
-            missing.forEach((member, i) => {
+            list.forEach((member, index) => {
                 const card = document.createElement('div');
-                card.className = 'person';
+                card.className = `person ${hasDueled ? 'has-dueled' : ''}`;
+                
+                const cardId = `${hasDueled ? 'd' : 'nd'}-${index}`;
 
-                const lastLog = member.log[0];
                 card.innerHTML = `
-                    <div class="person-header" onclick="toggleCard(${i})">
-                        <div class="person-id">
-                            <span class="person-name">${member.name}</span>
-                            <span class="person-meta">${member.tag} · последно: ${lastLog ? lastLog.day : 'няма данни'}</span>
+                    <div class="person-header" onclick="toggleCard('${cardId}')">
+                        <div>
+                            <div class="person-name">${member.name}</div>
+                            <div class="person-meta">
+                                ${member.tag} | Общо битки: <b>${member.totalBattles}/16</b> (Дуели: ${member.duelBattles}, Rage: ${member.rageBattles}, Нормални: ${member.normalBattles})
+                            </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:14px;">
-                            <span class="stamp">Без участие</span>
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <span class="stamp ${hasDueled ? 'ok' : ''}">
+                                ${hasDueled ? 'С дуел' : 'Без дуел'}
+                            </span>
                             <span class="chevron"></span>
                         </div>
                     </div>
-                    <div class="battle_report">
+                    <div class="battle_report" id="card-${cardId}">
                         <table>
                             <thead>
-                                <tr><th>Ден</th><th>Режим</th><th>Резултат</th><th>Точки</th></tr>
+                                <tr>
+                                    <th>Ден</th>
+                                    <th>Брой битки</th>
+                                    <th>Вид битки</th>
+                                    <th>Точки (Fame)</th>
+                                </tr>
                             </thead>
                             <tbody>
-                                ${member.log.map(entry => `
+                                ${member.dayLogs.map(log => `
                                     <tr>
-                                        <td>${entry.day}</td>
-                                        <td>${entry.mode}</td>
-                                        <td><span class="result-tag ${resultClass(entry)}">${entry.result}</span></td>
-                                        <td>${entry.fame}</td>
+                                        <td>${log.day}</td>
+                                        <td>${log.battlesCount}</td>
+                                        <td>${log.modes}</td>
+                                        <td>${log.fame}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -506,21 +461,46 @@
             });
         }
 
-        function resultClass(entry) {
-            if (!entry.participated) return 'missed';
-            return entry.result === 'Победа' ? 'win' : 'loss';
+        function toggleCard(id) {
+            const report = document.getElementById(`card-${id}`);
+            const parent = report.parentElement;
+            parent.classList.toggle('open');
         }
 
-        function toggleCard(index) {
-            const cards = document.querySelectorAll('.person');
-            cards[index].classList.toggle('open');
+        function setStatus(text, type) {
+            const el = document.getElementById('status');
+            el.textContent = text;
+            el.className = 'status-bar ' + (type || '');
+        }
+
+        function getDemoData() {
+            return [
+                {
+                    name: 'DarkKnight', tag: '#DEMO01', totalBattles: 12, duelBattles: 0, rageBattles: 4, normalBattles: 8, totalFame: 1200,
+                    dayLogs: [
+                        { day: 'Ден 1', battlesCount: 4, modes: 'Rage битка, Нормална битка', fame: 400 },
+                        { day: 'Ден 2', battlesCount: 4, modes: 'Нормална битка', fame: 350 },
+                        { day: 'Ден 3', battlesCount: 4, modes: 'Rage битка', fame: 450 },
+                        { day: 'Ден 4', battlesCount: 0, modes: 'Няма изиграни битки', fame: 0 }
+                    ]
+                },
+                {
+                    name: 'Valkyrie', tag: '#DEMO02', totalBattles: 16, duelBattles: 4, rageBattles: 2, normalBattles: 10, totalFame: 2400,
+                    dayLogs: [
+                        { day: 'Ден 1', battlesCount: 4, modes: 'Дуел, Нормална битка', fame: 700 },
+                        { day: 'Ден 2', battlesCount: 4, modes: 'Дуел, Rage битка', fame: 650 },
+                        { day: 'Ден 3', battlesCount: 4, modes: 'Дуел', fame: 550 },
+                        { day: 'Ден 4', battlesCount: 4, modes: 'Дуел', fame: 500 }
+                    ]
+                }
+            ];
         }
     </script>
 </head>
 
 <body>
 
-    <h1 style="font-size:60px;">
+    <h1 style="font-size:50px;">
         <b>Големият брат те наблюдава</b>
     </h1>
     <div class="sub-caption">Военно досие на клана · River Race мониторинг</div>
@@ -533,7 +513,6 @@
 
     <hr>
 
-    <div class="dossier-heading">Без участие в дуел · последни 4 бойни дни</div>
     <div id="results" class="dossier"></div>
 
     <footer>RoyaleAPI Data Extractor · клан #8CC822R</footer>
