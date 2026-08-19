@@ -7,7 +7,9 @@
     <title>RoyaleAPI Data Extractor</title>
     <link rel="icon" type="png" href="eye_icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
     <style>
         :root {
             --void: #0a0c09;
@@ -23,7 +25,9 @@
             --display: 'Oswald', sans-serif;
         }
 
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+        }
 
         body {
             margin: 0;
@@ -119,8 +123,13 @@
             color: var(--ink-dim);
         }
 
-        .status-bar.ok { color: var(--ok); }
-        .status-bar.warn { color: var(--amber); }
+        .status-bar.ok {
+            color: var(--ok);
+        }
+
+        .status-bar.warn {
+            color: var(--amber);
+        }
 
         .dossier {
             max-width: 760px;
@@ -270,42 +279,40 @@
         async function collectData() {
             setStatus('Зареждане на данни...', 'loading');
             try {
+                // Strip the '#' if present, then prepend '%23'
+                const rawTag = CONFIG.clanTag.replace('#', '');
+                const tagEncoded = `%23${rawTag}`;
+
                 // 1. Fetch active clan members
-                const tagEncoded = encodeURIComponent(CONFIG.clanTag);
                 const membersRes = await fetch(`${CONFIG.apiBase}/clans/${tagEncoded}/members`);
-                if (!membersRes.ok) throw new Error('Грешка при зареждане на членовете');
+                if (!membersRes.ok) throw new Error(`Members API Status: ${membersRes.status}`);
                 const membersData = await membersRes.json();
                 const membersList = membersData.items || [];
 
-                // 2. Fetch current river race (active war days context)
+                // 2. Fetch current river race
                 const raceRes = await fetch(`${CONFIG.apiBase}/clans/${tagEncoded}/currentriverrace`);
-                if (!raceRes.ok) throw new Error('Грешка при зареждане на текущата война');
+                if (!raceRes.ok) throw new Error(`Race API Status: ${raceRes.status}`);
                 const raceData = await raceRes.json();
 
-                // Process member statistics for the 4 active war days
+                // Process data
                 const parsedMembers = processWarData(membersList, raceData);
-                
-                // Sort & Split into 2 categories: 0 Duels first, ≥1 Duels second
+
                 const noDuel = parsedMembers.filter(m => m.duelBattles === 0);
                 const playedDuel = parsedMembers.filter(m => m.duelBattles > 0);
 
                 renderResults(noDuel, playedDuel);
                 setStatus(`Успешно заредени ${parsedMembers.length} члена.`, 'ok');
             } catch (err) {
-                console.warn('API connection failed, displaying fallback dataset:', err);
-                const demoData = getDemoData();
-                const noDuel = demoData.filter(m => m.duelBattles === 0);
-                const playedDuel = demoData.filter(m => m.duelBattles > 0);
-                renderResults(noDuel, playedDuel);
-                setStatus('Показват се примерни данни (Няма връзка с API).', 'warn');
+                console.error('Fetch Error:', err);
+                setStatus(`Грешка: ${err.message}`, 'warn');
             }
         }
 
         function processWarData(clanMembers, raceData) {
             const standings = raceData.clan || {};
             const participants = standings.participants || [];
-            
-            // Map war stats by player tag
+
+            // Map participants by player tag
             const participantMap = new Map();
             participants.forEach(p => {
                 participantMap.set(p.tag, p);
@@ -313,67 +320,37 @@
 
             return clanMembers.map(member => {
                 const warStats = participantMap.get(member.tag);
-                
-                let totalBattles = 0;
-                let duelBattles = 0;
-                let rageBattles = 0;
-                let normalBattles = 0;
-                let totalFame = warStats ? warStats.fame : 0;
 
-                // Extract active 4 war days details (excluding 3 training days)
+                // Official API fields
+                const totalDecks = warStats ? (warStats.decksUsed || 0) : 0;
+                const fame = warStats ? (warStats.fame || 0) : 0;
+
+                // Check if player completed any duels via decks used logic or custom flags
+                // Duels consume 2 to 3 decks in a single day
+                const decksToday = warStats ? (warStats.decksUsedToday || 0) : 0;
+
                 let dayLogs = [];
-                
-                if (warStats && warStats.periodLogs) {
-                    // Filter out training days (periods 0, 1, 2) and target active war days (3, 4, 5, 6)
-                    const activeWarDays = warStats.periodLogs.filter(log => log.periodIndex >= 3);
-                    
-                    activeWarDays.forEach((dayLog, index) => {
-                        const dayNum = index + 1;
-                        const battles = dayLog.items || [];
-                        const dayFame = dayLog.fame || 0;
-                        
-                        let dayModes = [];
-                        battles.forEach(b => {
-                            totalBattles++;
-                            if (b.type === 'duel' || b.type === 'colosseum') duelBattles++;
-                            else if (b.type === 'rage') rageBattles++;
-                            else normalBattles++;
-
-                            dayModes.push(formatBattleType(b.type));
-                        });
-
-                        dayLogs.push({
-                            day: `Ден ${dayNum}`,
-                            battlesCount: battles.length,
-                            modes: dayModes.length > 0 ? dayModes.join(', ') : 'Няма изиграни битки',
-                            fame: dayFame
-                        });
+                for (let d = 1; d <= 4; d++) {
+                    dayLogs.push({
+                        day: `Ден ${d}`,
+                        battlesCount: d === 4 ? decksToday : Math.floor(totalDecks / 4),
+                        modes: totalDecks > 0 ? 'Изиграни битки в събитието' : 'Няма изиграни битки',
+                        fame: d === 4 ? fame : 0
                     });
-                } else {
-                    // Fallback log structure when detailed logs are pending
-                    totalBattles = warStats ? warStats.decksUsed : 0;
-                    for (let d = 1; d <= 4; d++) {
-                        dayLogs.push({
-                            day: `Ден ${d}`,
-                            battlesCount: d === 4 ? totalBattles : 0,
-                            modes: totalBattles > 0 ? 'Стандартни/Дуел битки' : 'Няма битки',
-                            fame: d === 4 ? totalFame : 0
-                        });
-                    }
                 }
 
                 return {
                     name: member.name,
                     tag: member.tag,
-                    totalBattles: Math.min(totalBattles, 16),
-                    duelBattles,
-                    rageBattles,
-                    normalBattles,
-                    totalFame,
-                    dayLogs
+                    totalBattles: Math.min(totalDecks, 16),
+                    duelBattles: warStats && warStats.boatAttacks === 0 && totalDecks >= 2 ? 1 : 0, // Fallback estimate
+                    rageBattles: 0,
+                    normalBattles: totalDecks,
+                    totalFame: fame,
+                    dayLogs: dayLogs
                 };
             });
-        }
+        } f
 
         function formatBattleType(type) {
             switch (type) {
@@ -416,7 +393,7 @@
             list.forEach((member, index) => {
                 const card = document.createElement('div');
                 card.className = `person ${hasDueled ? 'has-dueled' : ''}`;
-                
+
                 const cardId = `${hasDueled ? 'd' : 'nd'}-${index}`;
 
                 card.innerHTML = `

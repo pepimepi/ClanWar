@@ -21,6 +21,7 @@ const ALLOWED_ORIGIN = 'https://pepimepi.github.io/ClanWar/';
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
+      s
       return withCORS(new Response(null, { status: 204 }));
     }
 
