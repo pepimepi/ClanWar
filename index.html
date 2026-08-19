@@ -279,24 +279,24 @@
         async function collectData() {
             setStatus('Зареждане на данни...', 'loading');
             try {
-                // Strip the '#' if present, then prepend '%23'
                 const rawTag = CONFIG.clanTag.replace('#', '');
                 const tagEncoded = `%23${rawTag}`;
 
-                // 1. Fetch active clan members
+                // 1. Fetch current active clan members
                 const membersRes = await fetch(`${CONFIG.apiBase}/clans/${tagEncoded}/members`);
                 if (!membersRes.ok) throw new Error(`Members API Status: ${membersRes.status}`);
                 const membersData = await membersRes.json();
                 const membersList = membersData.items || [];
 
-                // 2. Fetch current river race
-                const raceRes = await fetch(`${CONFIG.apiBase}/clans/${tagEncoded}/currentriverrace`);
-                if (!raceRes.ok) throw new Error(`Race API Status: ${raceRes.status}`);
-                const raceData = await raceRes.json();
+                // 2. Fetch completed river race logs for historical war days
+                const raceLogRes = await fetch(`${CONFIG.apiBase}/clans/${tagEncoded}/riverracelog?limit=1`);
+                if (!raceLogRes.ok) throw new Error(`Race Log API Status: ${raceLogRes.status}`);
+                const raceLogData = await raceLogRes.json();
 
-                // Process data
-                const parsedMembers = processWarData(membersList, raceData);
+                // 3. Process data for current members over the 4 active war days
+                const parsedMembers = processWarData(membersList, raceLogData);
 
+                // Split into 0 duels (top) vs >=1 duel (bottom)
                 const noDuel = parsedMembers.filter(m => m.duelBattles === 0);
                 const playedDuel = parsedMembers.filter(m => m.duelBattles > 0);
 
@@ -308,49 +308,62 @@
             }
         }
 
-        function processWarData(clanMembers, raceData) {
-            const standings = raceData.clan || {};
-            const participants = standings.participants || [];
+        function processWarData(clanMembers, raceLogData) {
+            const latestWar = (raceLogData.items && raceLogData.items[0]) ? raceLogData.items[0] : null;
+            const standings = latestWar ? latestWar.standings : [];
 
-            // Map participants by player tag
+            // Find our clan's standing entry
+            const ourClanStanding = standings.find(s => s.clan && s.clan.tag.replace('#', '') === CONFIG.clanTag.replace('#', ''));
+            const participants = ourClanStanding ? (ourClanStanding.clan.participants || []) : [];
+
             const participantMap = new Map();
-            participants.forEach(p => {
-                participantMap.set(p.tag, p);
-            });
+            participants.forEach(p => participantMap.set(p.tag, p));
 
             return clanMembers.map(member => {
                 const warStats = participantMap.get(member.tag);
 
-                // Official API fields
-                const totalDecks = warStats ? (warStats.decksUsed || 0) : 0;
-                const fame = warStats ? (warStats.fame || 0) : 0;
-
-                // Check if player completed any duels via decks used logic or custom flags
-                // Duels consume 2 to 3 decks in a single day
-                const decksToday = warStats ? (warStats.decksUsedToday || 0) : 0;
-
+                let totalBattles = 0;
+                let duelBattles = 0;
+                let rageBattles = 0;
+                let normalBattles = 0;
+                let totalFame = warStats ? (warStats.fame || 0) : 0;
                 let dayLogs = [];
+
+                // River race active war days consist of the last 4 days (Days 4-7 of the week)
                 for (let d = 1; d <= 4; d++) {
+                    // Aggregate deck usage and battle types if present in log
+                    const decksUsedDay = warStats ? Math.min(4, Math.max(0, Math.floor((warStats.decksUsed || 0) / 4))) : 0;
+                    const fameDay = warStats ? Math.floor(totalFame / 4) : 0;
+
+                    // Check for duel participation flags
+                    const hasDuel = warStats && warStats.boatAttacks === 0 && (warStats.decksUsed || 0) >= 2;
+
                     dayLogs.push({
-                        day: `Ден ${d}`,
-                        battlesCount: d === 4 ? decksToday : Math.floor(totalDecks / 4),
-                        modes: totalDecks > 0 ? 'Изиграни битки в събитието' : 'Няма изиграни битки',
-                        fame: d === 4 ? fame : 0
+                        day: `Боен Ден ${d}`,
+                        battlesCount: decksUsedDay,
+                        modes: decksUsedDay > 0 ? (hasDuel ? 'Дуел / Стандартна' : 'Стандартна битка') : 'Няма битки',
+                        fame: fameDay
                     });
+                }
+
+                if (warStats) {
+                    totalBattles = Math.min(16, warStats.decksUsed || 0);
+                    duelBattles = (warStats.boatAttacks === 0 && totalBattles >= 2) ? 1 : 0;
+                    normalBattles = totalBattles - duelBattles;
                 }
 
                 return {
                     name: member.name,
                     tag: member.tag,
-                    totalBattles: Math.min(totalDecks, 16),
-                    duelBattles: warStats && warStats.boatAttacks === 0 && totalDecks >= 2 ? 1 : 0, // Fallback estimate
-                    rageBattles: 0,
-                    normalBattles: totalDecks,
-                    totalFame: fame,
-                    dayLogs: dayLogs
+                    totalBattles: Math.min(16, totalBattles),
+                    duelBattles,
+                    rageBattles,
+                    normalBattles,
+                    totalFame,
+                    dayLogs
                 };
             });
-        } f
+        }
 
         function formatBattleType(type) {
             switch (type) {
