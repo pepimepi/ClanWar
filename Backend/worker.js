@@ -16,7 +16,7 @@ const CR_PROXY_BASE = 'https://proxy.royaleapi.dev/v1';
 
 // Lock this down to your actual site once it's live, e.g.
 // 'https://yourname.github.io'. '*' is fine while you're testing locally.
-const ALLOWED_ORIGIN = '*';
+const ALLOWED_ORIGIN = 'https://pepimepi.github.io/ClanWar/';
 
 export default {
   async fetch(request, env) {
