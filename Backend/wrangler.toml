@@ -1,0 +1,8 @@
+name = "royale-war-proxy"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# After deploying, set your Clash Royale API key as a secret
+# (never put it in this file or in source control):
+#
+#   wrangler secret put CR_API_KEY
