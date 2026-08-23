@@ -307,11 +307,26 @@
         }
 
         @media (max-width: 640px) {
-            h1 { font-size: 34px !important; }
-            .person-header { align-items: flex-start; }
-            .header-actions { flex-direction: column; gap: 8px; }
-            .battle_report { overflow-x: auto; }
-            .battle_report table { min-width: 620px; }
+            h1 {
+                font-size: 34px !important;
+            }
+
+            .person-header {
+                align-items: flex-start;
+            }
+
+            .header-actions {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .battle_report {
+                overflow-x: auto;
+            }
+
+            .battle_report table {
+                min-width: 620px;
+            }
         }
 
         footer {
@@ -332,15 +347,24 @@
         async function collectData() {
             const button = document.querySelector('.button_class');
             button.disabled = true;
-            setStatus('Зареждане на членовете на клана...', 'loading');
+            setStatus('Зареждане на данните за клана...', 'loading');
 
             try {
                 const tagEncoded = encodeURIComponent(CONFIG.clanTag);
-                const membersData = await fetchJson(`${CONFIG.apiBase}/clans/${tagEncoded}/members`);
+
+                // Current clan members + current River Race totals.
+                // The River Race participant "fame" value is used directly as the
+                // player's total points. We do NOT divide or reconstruct it per day.
+                const [membersData, currentRaceData] = await Promise.all([
+                    fetchJson(`${CONFIG.apiBase}/clans/${tagEncoded}/members`),
+                    fetchJson(`${CONFIG.apiBase}/clans/${tagEncoded}/currentriverrace`)
+                ]);
+
                 const membersList = membersData.items || [];
                 const warDays = getLastFourWarDays();
+                const fameByTag = buildFameMap(currentRaceData);
 
-                setStatus(`Проверка на бойните дневници: 0/${membersList.length}...`, 'loading');
+                setStatus(`Проверка на последните 25 битки: 0/${membersList.length}...`, 'loading');
 
                 let completed = 0;
                 const parsedMembers = await mapWithConcurrency(
@@ -357,14 +381,16 @@
                         }
 
                         completed++;
-                        setStatus(`Проверка на бойните дневници: ${completed}/${membersList.length}...`, 'loading');
-                        return processMember(member, battleLog, warDays, logError);
+                        setStatus(`Проверка на последните 25 битки: ${completed}/${membersList.length}...`, 'loading');
+                        return processMember(member, battleLog, warDays, fameByTag.get(member.tag) ?? 0, logError);
                     }
                 );
 
+                // Lowest duel count first. For equal duel counts, show the players
+                // with fewer war battles first, then sort alphabetically.
                 parsedMembers.sort((a, b) =>
                     a.duelBattles - b.duelBattles ||
-                    a.totalBattles - b.totalBattles ||
+                    a.warBattles - b.warBattles ||
                     a.name.localeCompare(b.name, 'bg')
                 );
 
@@ -373,12 +399,10 @@
 
                 renderResults(noDuel, playedDuel, warDays);
 
-                const possiblyTruncated = parsedMembers.filter(m => m.possiblyTruncated).length;
                 const failedLogs = parsedMembers.filter(m => m.logError).length;
-                let status = `Заредени ${parsedMembers.length} члена · ${formatWarRange(warDays)}.`;
-                if (possiblyTruncated) status += ` Внимание: ${possiblyTruncated} бойни дневника може да са непълни за най-стария ден.`;
-                if (failedLogs) status += ` Неуспешни дневници: ${failedLogs}.`;
-                setStatus(status, failedLogs || possiblyTruncated ? 'warn' : 'ok');
+                let status = `Заредени ${parsedMembers.length} члена · анализирани са максимум последните 25 битки на играч · ${formatWarRange(warDays)}.`;
+                if (failedLogs) status += ` Неуспешни battle log заявки: ${failedLogs}.`;
+                setStatus(status, failedLogs ? 'warn' : 'ok');
             } catch (err) {
                 console.error('Fetch Error:', err);
                 setStatus(`Грешка: ${err.message}`, 'warn');
@@ -417,90 +441,58 @@
             return results;
         }
 
-        function processMember(member, battleLog, warDays, logError) {
-            const dayMap = new Map(warDays.map(day => [day.key, {
-                ...day,
-                activities: [],
-                decksUsed: 0,
-                points: 0,
-                pointsKnown: true
-            }]));
+        function buildFameMap(currentRaceData) {
+            const map = new Map();
+            const participants = currentRaceData?.clan?.participants || [];
+            participants.forEach(player => {
+                map.set(player.tag, Number(player.fame || 0));
+            });
+            return map;
+        }
 
-            const relevantBattles = (Array.isArray(battleLog) ? battleLog : [])
+        function processMember(member, battleLog, warDays, totalFame, logError) {
+            const warDayKeys = new Set(warDays.map(day => day.key));
+
+            // The Clash Royale battle log already contains at most 25 records.
+            // slice(0, 25) makes that rule explicit and keeps this page independent
+            // of any future change in the proxy response.
+            const last25 = (Array.isArray(battleLog) ? battleLog : []).slice(0, 25);
+
+            const relevantBattles = last25
                 .map(battle => ({ battle, date: parseBattleTime(battle.battleTime) }))
-                .filter(x => x.date && isWarBattle(x.battle))
-                .filter(x => dayMap.has(dateKeyInZone(x.date, CONFIG.warTimeZone)))
-                .sort((a, b) => a.date - b.date);
+                .filter(x => x.date)
+                .filter(x => warDayKeys.has(dateKeyInZone(x.date, CONFIG.warTimeZone)))
+                .filter(x => isWarBattle(x.battle));
 
             let duelBattles = 0;
             let rageBattles = 0;
             let touchdownBattles = 0;
             let boatBattles = 0;
+            let normalBattles = 0;
             let otherBattles = 0;
-            let totalBattles = 0;
-            let totalActivities = 0;
-            let totalPoints = 0;
-            let totalPointsKnown = true;
 
-            relevantBattles.forEach(({ battle, date }) => {
-                const key = dateKeyInZone(date, CONFIG.warTimeZone);
-                const day = dayMap.get(key);
+            relevantBattles.forEach(({ battle }) => {
                 const info = describeWarBattle(battle);
-                const decksUsed = getDecksUsed(battle, info.kind);
-                const points = calculateWarPoints(battle, info.kind, decksUsed);
 
-                day.activities.push(info.label);
-                day.decksUsed += decksUsed;
-                if (points == null) {
-                    day.pointsKnown = false;
-                    totalPointsKnown = false;
-                } else {
-                    day.points += points;
-                    totalPoints += points;
-                }
-
-                totalActivities += 1;
-                totalBattles += decksUsed;
-
-                if (info.kind === 'duel') duelBattles += 1;
-                else if (info.kind === 'rage') rageBattles += 1;
-                else if (info.kind === 'touchdown') touchdownBattles += 1;
-                else if (info.kind === 'boat') boatBattles += 1;
-                else otherBattles += 1;
+                if (info.kind === 'duel') duelBattles++;
+                else if (info.kind === 'rage') rageBattles++;
+                else if (info.kind === 'touchdown') touchdownBattles++;
+                else if (info.kind === 'boat') boatBattles++;
+                else if (info.kind === 'normal') normalBattles++;
+                else otherBattles++;
             });
-
-            const dayLogs = warDays.map(dayInfo => {
-                const day = dayMap.get(dayInfo.key);
-                return {
-                    day: dayInfo.label,
-                    battlesCount: day.decksUsed,
-                    activityCount: day.activities.length,
-                    modes: day.activities.length ? summarizeModes(day.activities) : 'Няма изиграни битки',
-                    fame: day.pointsKnown ? day.points : null
-                };
-            });
-
-            const oldestWarKey = warDays[warDays.length - 1]?.key;
-            const parsedAllDates = (Array.isArray(battleLog) ? battleLog : [])
-                .map(b => parseBattleTime(b.battleTime))
-                .filter(Boolean)
-                .sort((a, b) => a - b);
-            const oldestLogKey = parsedAllDates.length ? dateKeyInZone(parsedAllDates[0], CONFIG.warTimeZone) : null;
-            const possiblyTruncated = Array.isArray(battleLog) && battleLog.length >= 25 && oldestLogKey && oldestWarKey && oldestLogKey > oldestWarKey;
 
             return {
                 name: member.name,
                 tag: member.tag,
-                totalBattles,
-                totalActivities,
+                warBattles: relevantBattles.length,
                 duelBattles,
                 rageBattles,
                 touchdownBattles,
                 boatBattles,
+                normalBattles,
                 otherBattles,
-                totalFame: totalPointsKnown ? totalPoints : null,
-                dayLogs,
-                possiblyTruncated,
+                totalFame: Number(totalFame || 0),
                 logError
             };
         }
@@ -662,7 +654,7 @@
             const info = document.createElement('div');
             info.className = 'range-note';
             info.innerHTML = `<b>Последни 4 бойни дни:</b> ${escapeHtml(warDays.map(d => d.label).join(' · '))}<br>` +
-                `<span>Понеделник–сряда (тренировъчни дни) се изключват. Сортиране: най-малко дуели → най-много дуели.</span>`;
+                `<span>Броят дуели/военни битки се взема само от последните 25 битки на играча и само ако битката е в боен ден (четвъртък–неделя). Точките са общият River Race Fame резултат, без разделяне по дни.</span>`;
             container.appendChild(info);
 
             appendSection(container, 'Без изигран дуел', noDuelList, false);
@@ -689,17 +681,15 @@
                 const cardId = `${hasDueled ? 'd' : 'nd'}-${index}`;
                 const warning = member.logError
                     ? `<div class="member-warning">Неуспешно зареждане на battle log: ${escapeHtml(member.logError)}</div>`
-                    : member.possiblyTruncated
-                        ? `<div class="member-warning">Battle log-ът е достигнал лимита от 25 записа; най-старият боен ден може да е непълен.</div>`
-                        : '';
+                    : '';
 
                 card.innerHTML = `
                     <div class="person-header" onclick="toggleCard('${cardId}')">
                         <div>
                             <div class="person-name">${escapeHtml(member.name)}</div>
                             <div class="person-meta">
-                                ${escapeHtml(member.tag)} | Военни декове: <b>${member.totalBattles}/16</b> · Активности: ${member.totalActivities}
-                                <br>Дуели: <b>${member.duelBattles}</b> · Rage: ${member.rageBattles} · Touchdown: ${member.touchdownBattles} · Лодка: ${member.boatBattles} · Други: ${member.otherBattles}
+                                ${escapeHtml(member.tag)} | Военни битки в последните 25: <b>${member.warBattles}</b> · Дуели: <b>${member.duelBattles}</b>
+                                <br>Общо точки за River Race: <b>${member.totalFame}</b>
                             </div>
                         </div>
                         <div class="header-actions">
@@ -712,21 +702,19 @@
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Ден</th>
-                                    <th>Декове</th>
-                                    <th>Вид битки</th>
-                                    <th>Точки</th>
+                                    <th>Показател</th>
+                                    <th>Брой / точки</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${member.dayLogs.map(log => `
-                                    <tr>
-                                        <td>${escapeHtml(log.day)}</td>
-                                        <td>${log.battlesCount}${log.activityCount !== log.battlesCount ? ` <span class="muted">(${log.activityCount} акт.)</span>` : ''}</td>
-                                        <td>${escapeHtml(log.modes)}</td>
-                                        <td>${log.fame == null ? '<span class="muted">неизвестни</span>' : log.fame}</td>
-                                    </tr>
-                                `).join('')}
+                                <tr><td>Военни битки</td><td><b>${member.warBattles}</b></td></tr>
+                                <tr><td>Дуели</td><td><b>${member.duelBattles}</b></td></tr>
+                                <tr><td>Rage битки</td><td>${member.rageBattles}</td></tr>
+                                <tr><td>Touchdown</td><td>${member.touchdownBattles}</td></tr>
+                                <tr><td>Нормални военни битки</td><td>${member.normalBattles}</td></tr>
+                                <tr><td>Атаки на лодка</td><td>${member.boatBattles}</td></tr>
+                                <tr><td>Други военни битки</td><td>${member.otherBattles}</td></tr>
+                                <tr><td><b>Общо точки за 4-те бойни дни</b></td><td><b>${member.totalFame}</b></td></tr>
                             </tbody>
                         </table>
                     </div>
