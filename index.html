@@ -337,11 +337,26 @@
         }
 
         @media (max-width: 640px) {
-            h1 { font-size: 34px !important; }
-            .person-header { align-items: flex-start; }
-            .header-actions { flex-direction: column; gap: 8px; }
-            .battle_report { overflow-x: auto; }
-            .battle_report table { min-width: 620px; }
+            h1 {
+                font-size: 34px !important;
+            }
+
+            .person-header {
+                align-items: flex-start;
+            }
+
+            .header-actions {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .battle_report {
+                overflow-x: auto;
+            }
+
+            .battle_report table {
+                min-width: 620px;
+            }
         }
 
         footer {
@@ -711,7 +726,7 @@
             const info = document.createElement('div');
             info.className = 'range-note';
             info.innerHTML = `<b>Последни 4 бойни дни:</b> ${escapeHtml(warDays.map(d => d.label).join(' · '))}<br>` +
-                `<span>Броят дуели/военни битки се взема само от последните 25 битки на играча и само ако битката е в боен ден (четвъртък–неделя). Точките са общият River Race Fame резултат, без разделяне по дни.</span>`;
+                `<span>Броят дуели/военни битки се взема само от последните 25 битки на играча.</span>`;
             container.appendChild(info);
 
             appendSection(container, 'Без изигран дуел', noDuelList, false);
@@ -744,7 +759,7 @@
                 if (member.twentyFifthBattleDate) {
                     oldestBattleBadge = `
                         <div class="oldest-battle-badge" title="${escapeHtml(formatBattleDate(member.twentyFifthBattleDate))}">
-                            25-тата битка е била <strong>${escapeHtml(formatTimeAgo(member.twentyFifthBattleDate))}</strong>
+                            25-та битка: <strong>${escapeHtml(formatTimeAgo(member.twentyFifthBattleDate))}</strong>
                         </div>`;
                 } else if (member.oldestAvailableBattleDate) {
                     oldestBattleBadge = `
