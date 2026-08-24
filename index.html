@@ -292,6 +292,36 @@
             gap: 12px;
         }
 
+
+        .oldest-battle-badge {
+            margin-top: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 11px;
+            border: 2px solid var(--amber);
+            background: rgba(217, 161, 60, 0.10);
+            color: var(--amber);
+            font-family: var(--display);
+            font-size: 13px;
+            letter-spacing: 0.7px;
+            text-transform: uppercase;
+            border-radius: 3px;
+            box-shadow: 0 0 16px rgba(217, 161, 60, 0.12);
+        }
+
+        .oldest-battle-badge strong {
+            color: var(--ink);
+            font-size: 15px;
+        }
+
+        .oldest-battle-badge.incomplete {
+            border-color: var(--ink-dim);
+            color: var(--ink-dim);
+            background: rgba(154, 160, 140, 0.08);
+            box-shadow: none;
+        }
+
         .member-warning {
             color: var(--amber);
             padding: 10px 14px;
@@ -307,26 +337,11 @@
         }
 
         @media (max-width: 640px) {
-            h1 {
-                font-size: 34px !important;
-            }
-
-            .person-header {
-                align-items: flex-start;
-            }
-
-            .header-actions {
-                flex-direction: column;
-                gap: 8px;
-            }
-
-            .battle_report {
-                overflow-x: auto;
-            }
-
-            .battle_report table {
-                min-width: 620px;
-            }
+            h1 { font-size: 34px !important; }
+            .person-header { align-items: flex-start; }
+            .header-actions { flex-direction: column; gap: 8px; }
+            .battle_report { overflow-x: auto; }
+            .battle_report table { min-width: 620px; }
         }
 
         footer {
@@ -458,6 +473,15 @@
             // of any future change in the proxy response.
             const last25 = (Array.isArray(battleLog) ? battleLog : []).slice(0, 25);
 
+            // The API returns newest first. If there are 25 entries, index 24 is
+            // exactly the 25th (oldest) battle in the visible battle-log window.
+            const twentyFifthBattleDate = last25.length >= 25
+                ? parseBattleTime(last25[24].battleTime)
+                : null;
+            const oldestAvailableBattleDate = last25.length
+                ? parseBattleTime(last25[last25.length - 1].battleTime)
+                : null;
+
             const relevantBattles = last25
                 .map(battle => ({ battle, date: parseBattleTime(battle.battleTime) }))
                 .filter(x => x.date)
@@ -493,6 +517,9 @@
                 normalBattles,
                 otherBattles,
                 totalFame: Number(totalFame || 0),
+                battleLogCount: last25.length,
+                twentyFifthBattleDate,
+                oldestAvailableBattleDate,
                 logError
             };
         }
@@ -598,6 +625,36 @@
             return new Date(`${y}-${m}-${d}T${hh}:${mm}:${ss}Z`);
         }
 
+
+        function formatTimeAgo(date) {
+            if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 'неизвестно';
+
+            const diffMs = Math.max(0, Date.now() - date.getTime());
+            const minutes = Math.floor(diffMs / 60000);
+            const hours = Math.floor(diffMs / 3600000);
+            const days = Math.floor(diffMs / 86400000);
+
+            if (minutes < 1) return 'преди по-малко от минута';
+            if (minutes < 60) return `преди ${minutes} мин.`;
+            if (hours < 24) return `преди ${hours} ч.`;
+
+            const remainingHours = Math.floor((diffMs % 86400000) / 3600000);
+            if (days < 7 && remainingHours > 0) return `преди ${days} д. ${remainingHours} ч.`;
+            if (days < 30) return `преди ${days} дни`;
+
+            const months = Math.floor(days / 30);
+            return `преди около ${months} мес.`;
+        }
+
+        function formatBattleDate(date) {
+            if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 'неизвестна дата';
+            return new Intl.DateTimeFormat('bg-BG', {
+                timeZone: CONFIG.warTimeZone,
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            }).format(date);
+        }
+
         function dateKeyInZone(date, timeZone) {
             const parts = new Intl.DateTimeFormat('en-CA', {
                 timeZone,
@@ -683,6 +740,22 @@
                     ? `<div class="member-warning">Неуспешно зареждане на battle log: ${escapeHtml(member.logError)}</div>`
                     : '';
 
+                let oldestBattleBadge;
+                if (member.twentyFifthBattleDate) {
+                    oldestBattleBadge = `
+                        <div class="oldest-battle-badge" title="${escapeHtml(formatBattleDate(member.twentyFifthBattleDate))}">
+                            25-тата битка е била <strong>${escapeHtml(formatTimeAgo(member.twentyFifthBattleDate))}</strong>
+                        </div>`;
+                } else if (member.oldestAvailableBattleDate) {
+                    oldestBattleBadge = `
+                        <div class="oldest-battle-badge incomplete" title="${escapeHtml(formatBattleDate(member.oldestAvailableBattleDate))}">
+                            Само ${member.battleLogCount}/25 битки · най-старата е <strong>${escapeHtml(formatTimeAgo(member.oldestAvailableBattleDate))}</strong>
+                        </div>`;
+                } else {
+                    oldestBattleBadge = `
+                        <div class="oldest-battle-badge incomplete">Няма налични battle-log записи</div>`;
+                }
+
                 card.innerHTML = `
                     <div class="person-header" onclick="toggleCard('${cardId}')">
                         <div>
@@ -691,6 +764,7 @@
                                 ${escapeHtml(member.tag)} | Военни битки в последните 25: <b>${member.warBattles}</b> · Дуели: <b>${member.duelBattles}</b>
                                 <br>Общо точки за River Race: <b>${member.totalFame}</b>
                             </div>
+                            ${oldestBattleBadge}
                         </div>
                         <div class="header-actions">
                             <span class="stamp ${hasDueled ? 'ok' : ''}">${member.duelBattles} ${member.duelBattles === 1 ? 'дуел' : 'дуела'}</span>
@@ -751,7 +825,7 @@
     <h1 style="font-size:50px;">
         <b>Големият брат те наблюдава</b>
     </h1>
-    <div class="sub-caption">Военно досие на клана · River Race мониторинг</div>
+    <div class="sub-caption">Военно досие на клана · River Race monitoring</div>
 
     <div class="button-wrapper">
         <button onclick="collectData()" class="button_class">Извлечи данни</button>
