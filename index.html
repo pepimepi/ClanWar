@@ -381,18 +381,10 @@
 
             try {
                 const tagEncoded = encodeURIComponent(CONFIG.clanTag);
-
-                // Current clan members + current River Race totals.
-                // The River Race participant "fame" value is used directly as the
-                // player's total points. We do NOT divide or reconstruct it per day.
-                const [membersData, currentRaceData] = await Promise.all([
-                    fetchJson(`${CONFIG.apiBase}/clans/${tagEncoded}/members`),
-                    fetchJson(`${CONFIG.apiBase}/clans/${tagEncoded}/currentriverrace`)
-                ]);
+                const membersData = await fetchJson(`${CONFIG.apiBase}/clans/${tagEncoded}/members`);
 
                 const membersList = membersData.items || [];
                 const warDays = getLastFourWarDays();
-                const fameByTag = buildFameMap(currentRaceData);
 
                 setStatus(`Проверка на последните 25 битки: 0/${membersList.length}...`, 'loading');
 
@@ -412,27 +404,29 @@
 
                         completed++;
                         setStatus(`Проверка на последните 25 битки: ${completed}/${membersList.length}...`, 'loading');
-                        return processMember(member, battleLog, warDays, fameByTag.get(member.tag) ?? 0, logError);
+                        return processMember(member, battleLog, warDays, logError);
                     }
                 );
 
-                // Lowest duel count first. For equal duel counts, show the players
-                // with fewer war battles first, then sort alphabetically.
+                // Preserve the original grouping idea, but use the duel count from ALL
+                // of the player's last 25 battles (not only the four target war days).
                 parsedMembers.sort((a, b) =>
-                    a.duelBattles - b.duelBattles ||
+                    a.duelsLast25 - b.duelsLast25 ||
                     a.warBattles - b.warBattles ||
                     a.name.localeCompare(b.name, 'bg')
                 );
 
-                const noDuel = parsedMembers.filter(m => m.duelBattles === 0);
-                const playedDuel = parsedMembers.filter(m => m.duelBattles > 0);
+                const noDuel = parsedMembers.filter(m => m.duelsLast25 === 0);
+                const playedDuel = parsedMembers.filter(m => m.duelsLast25 > 0);
 
                 renderResults(noDuel, playedDuel, warDays);
 
                 const failedLogs = parsedMembers.filter(m => m.logError).length;
+                const incompleteWindows = parsedMembers.filter(m => !m.logError && !m.coverageCoversWarWindow).length;
                 let status = `Заредени ${parsedMembers.length} члена · анализирани са максимум последните 25 битки на играч · ${formatWarRange(warDays)}.`;
+                if (incompleteWindows) status += ` При ${incompleteWindows} играч(и) 25-те битки не стигат до началото на целия период.`;
                 if (failedLogs) status += ` Неуспешни battle log заявки: ${failedLogs}.`;
-                setStatus(status, failedLogs ? 'warn' : 'ok');
+                setStatus(status, failedLogs || incompleteWindows ? 'warn' : 'ok');
             } catch (err) {
                 console.error('Fetch Error:', err);
                 setStatus(`Грешка: ${err.message}`, 'warn');
@@ -471,25 +465,15 @@
             return results;
         }
 
-        function buildFameMap(currentRaceData) {
-            const map = new Map();
-            const participants = currentRaceData?.clan?.participants || [];
-            participants.forEach(player => {
-                map.set(player.tag, Number(player.fame || 0));
-            });
-            return map;
-        }
-
-        function processMember(member, battleLog, warDays, totalFame, logError) {
+        function processMember(member, battleLog, warDays, logError) {
             const warDayKeys = new Set(warDays.map(day => day.key));
+            const earliestWarDayKey = warDays[0]?.key || null;
 
-            // The Clash Royale battle log already contains at most 25 records.
-            // slice(0, 25) makes that rule explicit and keeps this page independent
-            // of any future change in the proxy response.
+            // The official battle log contains at most the player's 25 most recent battles.
             const last25 = (Array.isArray(battleLog) ? battleLog : []).slice(0, 25);
 
-            // The API returns newest first. If there are 25 entries, index 24 is
-            // exactly the 25th (oldest) battle in the visible battle-log window.
+            // The API returns newest first. If 25 are present, entry 25 is the oldest
+            // battle in the inspected window and is shown prominently in the UI.
             const twentyFifthBattleDate = last25.length >= 25
                 ? parseBattleTime(last25[24].battleTime)
                 : null;
@@ -497,105 +481,185 @@
                 ? parseBattleTime(last25[last25.length - 1].battleTime)
                 : null;
 
+            const oldestAvailableKey = oldestAvailableBattleDate
+                ? dateKeyInZone(oldestAvailableBattleDate, CONFIG.warTimeZone)
+                : null;
+
+            // If there are fewer than 25 records, the API has returned every available
+            // battle. If there are 25, we can only guarantee full four-day coverage when
+            // the 25th battle is from a date before the first target war day.
+            const coverageCoversWarWindow = !logError && (
+                last25.length < 25 ||
+                (earliestWarDayKey && oldestAvailableKey && oldestAvailableKey < earliestWarDayKey)
+            );
+
+            // This count is intentionally across ALL 25 battles and is used for the
+            // existing "no duel / played duel" grouping and sorting.
+            const duelsLast25 = last25.filter(isDuelBattle).length;
+
             const relevantBattles = last25
                 .map(battle => ({ battle, date: parseBattleTime(battle.battleTime) }))
                 .filter(x => x.date)
                 .filter(x => warDayKeys.has(dateKeyInZone(x.date, CONFIG.warTimeZone)))
                 .filter(x => isWarBattle(x.battle));
 
-            let duelBattles = 0;
-            let rageBattles = 0;
-            let touchdownBattles = 0;
-            let boatBattles = 0;
-            let normalBattles = 0;
-            let otherBattles = 0;
+            const counts = {
+                duel: 0,
+                normal: 0,
+                rage: 0,
+                rampUp: 0,
+                tripleElixir: 0,
+                doubleElixir: 0,
+                touchdown: 0,
+                suddenDeath: 0,
+                other: 0
+            };
+
+            const otherModes = [];
+            let warPoints = 0;
+            let unresolvedPointBattles = 0;
 
             relevantBattles.forEach(({ battle }) => {
                 const info = describeWarBattle(battle);
+                counts[info.kind] = (counts[info.kind] || 0) + 1;
 
-                if (info.kind === 'duel') duelBattles++;
-                else if (info.kind === 'rage') rageBattles++;
-                else if (info.kind === 'touchdown') touchdownBattles++;
-                else if (info.kind === 'boat') boatBattles++;
-                else if (info.kind === 'normal') normalBattles++;
-                else otherBattles++;
+                if (info.kind === 'other') otherModes.push(info.label);
+
+                const decksUsed = getDecksUsed(battle, info.kind);
+                const points = calculateWarPoints(battle, info.pointsKind || info.kind, decksUsed);
+                if (points == null) unresolvedPointBattles++;
+                else warPoints += points;
             });
 
             return {
                 name: member.name,
                 tag: member.tag,
                 warBattles: relevantBattles.length,
-                duelBattles,
-                rageBattles,
-                touchdownBattles,
-                boatBattles,
-                normalBattles,
-                otherBattles,
-                totalFame: Number(totalFame || 0),
+                duelsLast25,
+                duelWarBattles: counts.duel,
+                normalBattles: counts.normal,
+                rageBattles: counts.rage,
+                rampUpBattles: counts.rampUp,
+                tripleElixirBattles: counts.tripleElixir,
+                doubleElixirBattles: counts.doubleElixir,
+                touchdownBattles: counts.touchdown,
+                suddenDeathBattles: counts.suddenDeath,
+                otherBattles: counts.other,
+                otherBattleSummary: summarizeModes(otherModes),
+                warPoints,
+                unresolvedPointBattles,
                 battleLogCount: last25.length,
                 twentyFifthBattleDate,
                 oldestAvailableBattleDate,
+                coverageCoversWarWindow,
                 logError
             };
         }
 
+        function normalizeApiKey(value) {
+            return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        }
+
+        function isDuelBattle(battle) {
+            const typeKey = normalizeApiKey(battle?.type);
+            return typeKey.includes('riverraceduel') || typeKey.includes('duel');
+        }
+
         function isWarBattle(battle) {
-            const type = String(battle.type || '').toLowerCase();
-            const mode = String(battle.gameMode?.name || '').toLowerCase();
-            return type.includes('riverrace') ||
-                type.includes('boatbattle') ||
-                type.includes('boat_battle') ||
-                mode.startsWith('cw_') ||
-                mode.includes('clanwar') ||
-                mode.includes('river');
+            const typeKey = normalizeApiKey(battle?.type);
+            const modeKey = normalizeApiKey(battle?.gameMode?.name || battle?.mode?.name);
+
+            return typeKey.includes('riverrace') ||
+                typeKey.includes('boatbattle') ||
+                modeKey.startsWith('cw') ||
+                modeKey.includes('clanwar') ||
+                modeKey.includes('riverrace');
         }
 
         function describeWarBattle(battle) {
-            const type = String(battle.type || '').toLowerCase();
-            const rawMode = String(battle.gameMode?.name || battle.mode?.name || '').trim();
-            const mode = rawMode.toLowerCase();
+            const rawType = String(battle?.type || '').trim();
+            const rawMode = String(battle?.gameMode?.name || battle?.mode?.name || '').trim();
+            const typeKey = normalizeApiKey(rawType);
+            const modeKey = normalizeApiKey(rawMode);
 
-            if (type.includes('duel')) {
-                return { kind: 'duel', label: type.includes('colosseum') ? 'Колизеум дуел' : 'Дуел' };
+            // Normal and Colosseum duels are deliberately merged into one category.
+            if (typeKey.includes('duel')) {
+                return { kind: 'duel', pointsKind: 'duel', label: 'Дуел' };
             }
-            if (type.includes('boat')) return { kind: 'boat', label: 'Атака на лодка' };
-            if (mode.includes('touchdown')) return { kind: 'touchdown', label: 'Touchdown' };
-            if (mode.includes('rage')) return { kind: 'rage', label: 'Rage битка' };
-            if (mode.includes('triple') && mode.includes('elixir')) return { kind: 'other', label: 'Triple Elixir' };
-            if (mode.includes('double') && mode.includes('elixir')) return { kind: 'other', label: 'Double Elixir' };
-            if (mode.includes('sudden')) return { kind: 'other', label: 'Sudden Death' };
-            if (mode.includes('draft')) return { kind: 'other', label: 'Draft' };
-            if (mode === 'cw_battle_1v1' || type.includes('riverracepvp')) {
-                return { kind: 'normal', label: rawMode && rawMode !== 'CW_Battle_1v1' ? prettyModeName(rawMode) : 'Нормална битка' };
+
+            // Weekly rotating River Race modes. Normalization makes this resilient to
+            // names such as TripleElixir_Ladder, CW_TripleElixir, RampUp_Ladder, etc.
+            if (modeKey.includes('touchdown')) {
+                return { kind: 'touchdown', pointsKind: 'pvp', label: 'Touchdown' };
             }
-            return { kind: 'other', label: rawMode ? prettyModeName(rawMode) : 'Друга военна битка' };
+            if (modeKey.includes('suddendeath')) {
+                return { kind: 'suddenDeath', pointsKind: 'pvp', label: 'Sudden Death' };
+            }
+            if (modeKey.includes('tripleelixir')) {
+                return { kind: 'tripleElixir', pointsKind: 'pvp', label: 'Triple Elixir' };
+            }
+            if (modeKey.includes('doubleelixir')) {
+                return { kind: 'doubleElixir', pointsKind: 'pvp', label: 'Double Elixir' };
+            }
+            if (modeKey.includes('rampup')) {
+                return { kind: 'rampUp', pointsKind: 'pvp', label: 'Ramp Up' };
+            }
+            if (modeKey.includes('rage')) {
+                return { kind: 'rage', pointsKind: 'pvp', label: 'Rage' };
+            }
+
+            // Boat Battles are still war activity, but because the requested display
+            // categories do not have a separate Boat Battle bucket, they are counted in
+            // "Other" while retaining their special medal values.
+            if (typeKey.includes('boatbattle') || modeKey.includes('boatbattle')) {
+                return { kind: 'other', pointsKind: 'boat', label: 'Boat Battle' };
+            }
+
+            // Standard River Race PvP / CW_Battle_1v1.
+            if (typeKey.includes('riverracepvp') || modeKey === 'cwbattle1v1') {
+                return { kind: 'normal', pointsKind: 'pvp', label: 'Нормална битка' };
+            }
+
+            // Anything new or unrecognized remains visible instead of being silently
+            // mislabelled as a normal battle.
+            const detail = rawMode || rawType || 'Неизвестен режим';
+            return { kind: 'other', pointsKind: 'pvp', label: prettyModeName(detail) };
         }
 
         function prettyModeName(value) {
-            return value
+            return String(value || '')
                 .replace(/^CW[_\s-]*/i, '')
                 .replace(/[_-]+/g, ' ')
+                .replace(/([a-z])([A-Z])/g, '$1 $2')
                 .replace(/\b\w/g, ch => ch.toUpperCase());
         }
 
         function getDecksUsed(battle, kind) {
             if (kind !== 'duel') return 1;
-            const cardCount = battle.team?.[0]?.cards?.length || 0;
+
+            // Duel battle-log entries concatenate the cards used in each duel round.
+            // 16 cards => two rounds/decks; 24 cards => three rounds/decks.
+            const cardCount = Array.isArray(battle?.team?.[0]?.cards)
+                ? battle.team[0].cards.length
+                : 0;
+
             if (cardCount >= 16) return Math.min(3, Math.max(2, Math.round(cardCount / 8)));
             return 2;
         }
 
-        function calculateWarPoints(battle, kind, decksUsed) {
+        function calculateWarPoints(battle, pointsKind, decksUsed) {
             const won = didPlayerWin(battle);
             if (won == null) return null;
 
-            if (kind === 'duel') {
-                // A duel consumes 2 or 3 decks. A 2-round winner wins both rounds;
-                // a 3-round duel always contains two wins and one loss split between players.
+            if (pointsKind === 'duel') {
+                // Each duel round awards 250 for a win and 100 for a loss.
+                // 2-round duel: winner 500, loser 200.
+                // 3-round duel: winner 600, loser 450.
                 if (decksUsed <= 2) return won ? 500 : 200;
                 return won ? 600 : 450;
             }
-            if (kind === 'boat') return won ? 100 : 75;
+
+            if (pointsKind === 'boat') return won ? 100 : 75;
             return won ? 200 : 100;
         }
 
@@ -626,7 +690,9 @@
         function summarizeModes(modes) {
             const counts = new Map();
             modes.forEach(mode => counts.set(mode, (counts.get(mode) || 0) + 1));
-            return [...counts.entries()].map(([mode, count]) => count > 1 ? `${mode} ×${count}` : mode).join(', ');
+            return [...counts.entries()]
+                .map(([mode, count]) => count > 1 ? `${mode} ×${count}` : mode)
+                .join(', ');
         }
 
         function parseBattleTime(value) {
@@ -726,11 +792,11 @@
             const info = document.createElement('div');
             info.className = 'range-note';
             info.innerHTML = `<b>Последни 4 бойни дни:</b> ${escapeHtml(warDays.map(d => d.label).join(' · '))}<br>` +
-                `<span>Броят дуели/военни битки се взема само от последните 25 битки на играча.</span>`;
+                `<span>Тренировъчните дни не се броят. Военните режими и точките се изчисляват само от битките в тези 4 дни, които присъстват сред последните 25. Групирането по дуели използва всички последни 25 битки.</span>`;
             container.appendChild(info);
 
-            appendSection(container, 'Без изигран дуел', noDuelList, false);
-            appendSection(container, 'С изигран дуел · възходящо по брой дуели', duelList, true);
+            appendSection(container, 'Без изигран дуел в последните 25 битки', noDuelList, false);
+            appendSection(container, 'С изигран дуел в последните 25 · възходящо по брой дуели', duelList, true);
         }
 
         function appendSection(container, title, list, hasDueled) {
@@ -751,8 +817,18 @@
                 const card = document.createElement('div');
                 card.className = `person ${hasDueled ? 'has-dueled' : ''}`;
                 const cardId = `${hasDueled ? 'd' : 'nd'}-${index}`;
-                const warning = member.logError
-                    ? `<div class="member-warning">Неуспешно зареждане на battle log: ${escapeHtml(member.logError)}</div>`
+                const warningParts = [];
+                if (member.logError) {
+                    warningParts.push(`Неуспешно зареждане на battle log: ${escapeHtml(member.logError)}`);
+                }
+                if (!member.logError && !member.coverageCoversWarWindow) {
+                    warningParts.push('Внимание: 25-тата битка е твърде скорошна, затова част от 4-дневния военен период може да липсва.');
+                }
+                if (member.unresolvedPointBattles > 0) {
+                    warningParts.push(`Не могат да се определят точките за ${member.unresolvedPointBattles} военни битки.`);
+                }
+                const warning = warningParts.length
+                    ? `<div class="member-warning">${warningParts.join('<br>')}</div>`
                     : '';
 
                 let oldestBattleBadge;
@@ -776,13 +852,13 @@
                         <div>
                             <div class="person-name">${escapeHtml(member.name)}</div>
                             <div class="person-meta">
-                                ${escapeHtml(member.tag)} | Военни битки в последните 25: <b>${member.warBattles}</b> · Дуели: <b>${member.duelBattles}</b>
-                                <br>Общо точки за River Race: <b>${member.totalFame}</b>
+                                ${escapeHtml(member.tag)} | Военни усилия в 4-те бойни дни: <b>${member.warBattles}</b> · Дуели в последните 25: <b>${member.duelsLast25}</b>
+                                <br>Точки за 4-те бойни дни: <b>${member.warPoints}${member.unresolvedPointBattles ? '+' : ''}</b>
                             </div>
                             ${oldestBattleBadge}
                         </div>
                         <div class="header-actions">
-                            <span class="stamp ${hasDueled ? 'ok' : ''}">${member.duelBattles} ${member.duelBattles === 1 ? 'дуел' : 'дуела'}</span>
+                            <span class="stamp ${hasDueled ? 'ok' : ''}">${member.duelsLast25} ${member.duelsLast25 === 1 ? 'дуел' : 'дуела'}</span>
                             <span class="chevron"></span>
                         </div>
                     </div>
@@ -796,14 +872,18 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td>Военни битки</td><td><b>${member.warBattles}</b></td></tr>
-                                <tr><td>Дуели</td><td><b>${member.duelBattles}</b></td></tr>
-                                <tr><td>Rage битки</td><td>${member.rageBattles}</td></tr>
+                                <tr><td>Всички военни усилия в 4-те бойни дни</td><td><b>${member.warBattles}</b></td></tr>
+                                <tr><td>Дуел (нормален + Colosseum)</td><td><b>${member.duelWarBattles}</b></td></tr>
+                                <tr><td>Нормална битка</td><td>${member.normalBattles}</td></tr>
+                                <tr><td>Rage</td><td>${member.rageBattles}</td></tr>
+                                <tr><td>Ramp Up</td><td>${member.rampUpBattles}</td></tr>
+                                <tr><td>Triple Elixir</td><td>${member.tripleElixirBattles}</td></tr>
+                                <tr><td>Double Elixir</td><td>${member.doubleElixirBattles}</td></tr>
                                 <tr><td>Touchdown</td><td>${member.touchdownBattles}</td></tr>
-                                <tr><td>Нормални военни битки</td><td>${member.normalBattles}</td></tr>
-                                <tr><td>Атаки на лодка</td><td>${member.boatBattles}</td></tr>
-                                <tr><td>Други военни битки</td><td>${member.otherBattles}</td></tr>
-                                <tr><td><b>Общо точки за 4-те бойни дни</b></td><td><b>${member.totalFame}</b></td></tr>
+                                <tr><td>Sudden Death</td><td>${member.suddenDeathBattles}</td></tr>
+                                <tr><td>Други битки</td><td>${member.otherBattles}${member.otherBattleSummary ? ` <span class="muted">(${escapeHtml(member.otherBattleSummary)})</span>` : ''}</td></tr>
+                                <tr><td><b>Точки за 4-те бойни дни</b></td><td><b>${member.warPoints}${member.unresolvedPointBattles ? '+' : ''}</b></td></tr>
+                                <tr><td>Дуели сред всички последни 25 битки</td><td><b>${member.duelsLast25}</b></td></tr>
                             </tbody>
                         </table>
                     </div>

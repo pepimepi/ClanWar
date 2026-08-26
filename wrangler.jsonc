@@ -1,11 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "lan-ar",
-  "compatibility_date": "2026-08-15",
+  "name": "royale-war-proxy",
+  "main": "worker.js",
+  "compatibility_date": "2026-08-26",
   "observability": {
     "enabled": true
-  },
-  "assets": {
-    "directory": "."
   }
 }
